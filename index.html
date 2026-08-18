@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Coverage Titik Sub-SLS</title>
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { height: 100dvh; width: 100vw; overflow: hidden; position: relative; }
+    #map { height: 100%; width: 100%; z-index: 1; }
+
+    /* Tombol Toggle Filter di HP */
+    .filter-toggle-btn {
+      display: none;
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      z-index: 1001;
+      background: #0f172a;
+      color: #fff;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      cursor: pointer;
+    }
+
+    /* Sidebar / Bottom Sheet */
+    #sidebar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 340px;
+      height: 100%;
+      background: #ffffff;
+      padding: 18px;
+      box-shadow: 2px 0 14px rgba(0,0,0,0.15);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 1002;
+      overflow-y: auto;
+      transition: transform 0.3s ease;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #f1f5f9;
+      padding-bottom: 8px;
+    }
+
+    .panel-header h2 { font-size: 1.05rem; color: #0f172a; }
+    .close-btn { display: none; background: none; border: none; font-size: 1.3rem; color: #64748b; cursor: pointer; }
+
+    .form-group { display: flex; flex-direction: column; gap: 3px; }
+    label { font-size: 0.72rem; font-weight: 600; color: #64748b; text-transform: uppercase; }
+    select {
+      padding: 9px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #fff;
+      font-size: 0.88rem;
+      outline: none;
+    }
+    select:disabled { background: #f8fafc; color: #94a3b8; cursor: not-allowed; }
+    
+    .id-badge {
+      background: #f0fdf4;
+      border: 1px dashed #22c55e;
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      color: #15803d;
+      font-family: monospace;
+      text-align: center;
+    }
+    
+    .stats {
+      margin-top: auto;
+      padding: 10px;
+      background: #f8fafc;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      color: #475569;
+      line-height: 1.4;
+      border-left: 3px solid #3b82f6;
+    }
+
+    /* Custom Tooltip & Popup */
+    .custom-popup { font-size: 0.85rem; line-height: 1.4; color: #1e293b; }
+    .custom-popup .row { margin-bottom: 4px; }
+    .custom-popup .label { font-weight: 600; color: #64748b; font-size: 0.72rem; text-transform: uppercase; }
+    .custom-popup .val { font-weight: 600; color: #0f172a; }
+
+    /* Responsif Layar HP */
+    @media (max-width: 768px) {
+      .filter-toggle-btn { display: block; }
+      .close-btn { display: block; }
+      #sidebar {
+        width: 100%;
+        height: auto;
+        max-height: 75vh;
+        top: auto;
+        bottom: 0;
+        border-radius: 16px 16px 0 0;
+        box-shadow: 0 -4px 20px rgba(0,0,0,0.25);
+      }
+      #sidebar.collapsed { transform: translateY(105%); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Tombol Khusus Mobile -->
+  <button id="btn-toggle-filter" class="filter-toggle-btn">&#9776; Filter Wilayah</button>
+
+  <div id="sidebar">
+    <div class="panel-header">
+      <h2>Filter Batas Sub-SLS</h2>
+      <button id="btn-close-sheet" class="close-btn">&times;</button>
+    </div>
+    
+    <div class="form-group">
+      <label>1. Provinsi (2 Digit)</label>
+      <select id="sel-prov"><option value="">-- Pilih Provinsi --</option></select>
+    </div>
+
+    <div class="form-group">
+      <label>2. Kab/Kota (2 Digit)</label>
+      <select id="sel-kab" disabled><option value="">-- Pilih Kab/Kota --</option></select>
+    </div>
+
+    <div class="form-group">
+      <label>3. Kecamatan (3 Digit)</label>
+      <select id="sel-kec" disabled><option value="">-- Pilih Kecamatan --</option></select>
+    </div>
+
+    <div class="form-group">
+      <label>4. Desa/Kelurahan (3 Digit)</label>
+      <select id="sel-desa" disabled><option value="">-- Pilih Desa --</option></select>
+    </div>
+
+    <div class="form-group">
+      <label>5. SLS (4 Digit)</label>
+      <select id="sel-sls" disabled><option value="">-- Pilih SLS --</option></select>
+    </div>
+
+    <div class="form-group">
+      <label>6. Sub-SLS (2 Digit)</label>
+      <select id="sel-subsls" disabled><option value="">-- Pilih Sub-SLS --</option></select>
+    </div>
+
+    <div class="id-badge">
+      <strong>ID Sub-SLS Terpilih:</strong><br>
+      <span id="current-id">Belum Dipilih</span>
+    </div>
+
+    <div class="stats" id="info-box">
+      Pilih seluruh tingkatan wilayah di atas untuk memuat poligon dan titik sampel.
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Panggil File Data JS -->
+  <script src="batas_subsls.js"></script>
+  <script src="titik_sampel.js"></script>
+
+  <script>
+    // 1. Inisialisasi Peta
+    const map = L.map('map', { zoomControl: false }).setView([-8.535, 115.042], 12);
+    L.control.zoom({ position: 'topright' }).addTo(map);
+
+    // Google Hybrid Basemap
+    L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+      maxZoom: 20,
+      attribution: 'Google Maps'
+    }).addTo(map);
+
+    let slsLayerGroup = L.featureGroup().addTo(map);
+    let pointLayerGroup = L.featureGroup().addTo(map);
+
+    // 2. Deteksi Variabel GeoJSON & Titik Sampel
+    const geoData = (typeof rawGeoJSON !== 'undefined') ? rawGeoJSON : 
+                    ((typeof batasSubSLS !== 'undefined') ? batasSubSLS : { features: [] });
+
+    const pointsData = (typeof titikSampelData !== 'undefined') ? titikSampelData : 
+                       ((typeof rawPoints !== 'undefined') ? rawPoints : []);
+
+    // Helper Parser 16 Digit
+    function parseId(id, nama) {
+      if (!id) return null;
+      const strId = String(id).trim();
+      if (strId.length < 16) return null;
+      return {
+        idsubsls: strId,
+        nama: nama || '',
+        prov: strId.substring(0, 2),
+        kab: strId.substring(2, 4),
+        kec: strId.substring(4, 7),
+        desa: strId.substring(7, 10),
+        sls: strId.substring(10, 14),
+        subsls: strId.substring(14, 16)
+      };
+    }
+
+    // Ekstraksi seluruh ID dari features yang ada di batas_subsls.js
+    const listFeatures = (geoData.features || []).map(f => {
+      const p = f.properties || {};
+      const id = p.idsubsls || p.IDSUBSLS || p.id_subsls || '';
+      return parseId(id, p.nama || p.NAMA || '');
+    }).filter(Boolean);
+
+    const sidebar = document.getElementById('sidebar');
+    const btnToggle = document.getElementById('btn-toggle-filter');
+    const btnClose = document.getElementById('btn-close-sheet');
+    const selProv = document.getElementById('sel-prov');
+    const selKab = document.getElementById('sel-kab');
+    const selKec = document.getElementById('sel-kec');
+    const selDesa = document.getElementById('sel-desa');
+    const selSls = document.getElementById('sel-sls');
+    const selSubsls = document.getElementById('sel-subsls');
+    const txtId = document.getElementById('current-id');
+    const infoBox = document.getElementById('info-box');
+
+    btnToggle.addEventListener('click', () => sidebar.classList.remove('collapsed'));
+    btnClose.addEventListener('click', () => sidebar.classList.add('collapsed'));
+
+    function populateSelect(selectEl, items, placeholder) {
+      selectEl.innerHTML = `<option value="">-- ${placeholder} --</option>`;
+      const unique = [...new Set(items)].sort();
+      unique.forEach(val => selectEl.add(new Option(val, val)));
+      selectEl.disabled = unique.length === 0;
+    }
+
+    function initFilters() {
+      if (listFeatures.length === 0) {
+        infoBox.innerHTML = "<span style='color:red;'>Peringatan: Data batas_subsls.js kosong atau properti 'idsubsls' tidak terbaca.</span>";
+        return;
+      }
+      const uniqueProv = [...new Set(listFeatures.map(i => i.prov))];
+      populateSelect(selProv, uniqueProv, 'Pilih Provinsi');
+      resetSelects([selKab, selKec, selDesa, selSls, selSubsls]);
+    }
+
+    // 3. Cascading Dropdown Listeners
+    selProv.addEventListener('change', () => {
+      const filtered = listFeatures.filter(i => i.prov === selProv.value);
+      populateSelect(selKab, filtered.map(i => i.kab), 'Pilih Kab/Kota');
+      resetSelects([selKec, selDesa, selSls, selSubsls]);
+    });
+
+    selKab.addEventListener('change', () => {
+      const filtered = listFeatures.filter(i => i.prov === selProv.value && i.kab === selKab.value);
+      populateSelect(selKec, filtered.map(i => i.kec), 'Pilih Kecamatan');
+      resetSelects([selDesa, selSls, selSubsls]);
+    });
+
+    selKec.addEventListener('change', () => {
+      const filtered = listFeatures.filter(i => i.prov === selProv.value && i.kab === selKab.value && i.kec === selKec.value);
+      populateSelect(selDesa, filtered.map(i => i.desa), 'Pilih Desa');
+      resetSelects([selSls, selSubsls]);
+    });
+
+    selDesa.addEventListener('change', () => {
+      const filtered = listFeatures.filter(i => i.prov === selProv.value && i.kab === selKab.value && i.kec === selKec.value && i.desa === selDesa.value);
+      populateSelect(selSls, filtered.map(i => i.sls), 'Pilih SLS');
+      resetSelects([selSubsls]);
+    });
+
+    selSls.addEventListener('change', () => {
+      const filtered = listFeatures.filter(i => i.prov === selProv.value && i.kab === selKab.value && i.kec === selKec.value && i.desa === selDesa.value && i.sls === selSls.value);
+      populateSelect(selSubsls, filtered.map(i => i.subsls), 'Pilih Sub-SLS');
+    });
+
+    selSubsls.addEventListener('change', () => {
+      const fullId = `${selProv.value}${selKab.value}${selKec.value}${selDesa.value}${selSls.value}${selSubsls.value}`;
+      if (fullId.length === 16) {
+        txtId.textContent = fullId;
+        renderMap(fullId);
+        if (window.innerWidth <= 768) {
+          sidebar.classList.add('collapsed');
+        }
+      }
+    });
+
+    function resetSelects(selects) {
+      selects.forEach(s => {
+        s.innerHTML = `<option value="">-- Menunggu Pilihan --</option>`;
+        s.disabled = true;
+      });
+      txtId.textContent = "Belum Dipilih";
+    }
+
+    // 4. Render Poligon dan Titik
+    function renderMap(targetId) {
+      slsLayerGroup.clearLayers();
+      pointLayerGroup.clearLayers();
+
+      const searchId = String(targetId).trim();
+
+      // Cari Poligon Batas
+      const feature = geoData.features ? geoData.features.find(f => {
+        const props = f.properties || {};
+        const slsId = String(props.idsubsls || props.IDSUBSLS || props.id_subsls || '').trim();
+        return slsId === searchId;
+      }) : null;
+
+      let namaWilayah = '';
+      if (feature) {
+        namaWilayah = (feature.properties && (feature.properties.nama || feature.properties.NAMA)) || '';
+        const polygon = L.geoJSON(feature, {
+          style: {
+            color: '#facc15',
+            weight: 3,
+            fillColor: '#facc15',
+            fillOpacity: 0.25
+          }
+        }).bindPopup(`<b>${namaWilayah}</b><br>ID: ${searchId}`);
+        slsLayerGroup.addLayer(polygon);
+      }
+
+      // Filter Titik Sampel (Konversi angka ke string & trim spasi)
+      const matchedPoints = pointsData.filter(p => {
+        const pointId = String(p.idsubsls || p.IDSUBSLS || p.id_subsls || '').trim();
+        return pointId === searchId;
+      });
+
+      matchedPoints.forEach(p => {
+        const popupContent = `
+          <div class="custom-popup">
+            <div class="row"><span class="label">Nama Responden:</span><br><span class="val">${p.nama_responden || '-'}</span></div>
+            <div class="row"><span class="label">Jenis:</span><br><span class="val">${p.jenis || '-'}</span></div>
+            <div class="row"><span class="label">No Bangunan / ID SBR:</span><br><span class="val">${p.no_bangunan || '-'}</span></div>
+          </div>
+        `;
+
+        const marker = L.circleMarker([p.lat, p.lng], {
+          radius: 7,
+          fillColor: '#ef4444',
+          color: '#ffffff',
+          weight: 2,
+          opacity: 1,
+          fillOpacity: 0.95
+        })
+        .bindPopup(popupContent)
+        .bindTooltip(p.nama_responden || 'Responden', { direction: 'top', offset: [0, -6] });
+        
+        pointLayerGroup.addLayer(marker);
+      });
+
+      // Auto-Zoom: Prioritas ke poligon jika ada, jika tidak ke titik
+      if (slsLayerGroup.getLayers().length > 0) {
+        map.fitBounds(slsLayerGroup.getBounds(), { padding: [40, 40], maxZoom: 18 });
+      } else if (pointLayerGroup.getLayers().length > 0) {
+        map.fitBounds(pointLayerGroup.getBounds(), { padding: [40, 40], maxZoom: 18 });
+      }
+
+      infoBox.innerHTML = `
+        <strong>${namaWilayah || 'Sub-SLS'}</strong><br>
+        ID: <code>${searchId}</code><br>
+        Total Titik: <strong>${matchedPoints.length}</strong> titik sampel.
+      `;
+    }
+
+    initFilters();
+  </script>
+</body>
+</html>
